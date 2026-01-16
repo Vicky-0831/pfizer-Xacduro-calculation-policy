@@ -9,20 +9,17 @@ st.set_page_config(page_title="X药2026模拟器", layout="wide")
 # --- 终极 CSS 样式 (保持不变) ---
 st.markdown("""
     <style>
-    /* 1. 输入框容器样式 */
     div[data-baseweb="input"] {
         background-color: #EBF5FB !important;
         border: 1px solid #EBF5FB !important;
         border-radius: 5px !important;
     }
-    /* 2. 内部透明 */
     div[data-baseweb="input"] > div,
     div[data-baseweb="input"] input {
         background-color: transparent !important;
         color: #000000 !important;
         font-weight: 500;
     }
-    /* 3. 锁定状态 */
     div[data-baseweb="input"]:has(input:disabled) {
         background-color: #f0f2f6 !important;
         border: 1px solid rgba(49, 51, 63, 0.2) !important;
@@ -34,76 +31,58 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 智能数据加载函数 (修复读取报错) ---
+# --- 智能数据加载函数 ---
 @st.cache_data
 def load_policy_data():
     default_file = 'policy_data.xlsx'
-    
     def search_and_load(source):
         try:
             xl = pd.ExcelFile(source)
-            # 遍历所有 Sheet，寻找包含"省份"的那一个
             for sheet_name in xl.sheet_names:
-                # 先读前10行探探路
                 df_preview = pd.read_excel(source, sheet_name=sheet_name, header=None, nrows=10)
-                
                 header_idx = -1
-                # 寻找哪一行是表头
                 for idx, row in df_preview.iterrows():
                     row_values = [str(x).strip() for x in row.values]
                     if '省份' in row_values and '保险名称' in row_values:
                         header_idx = idx
                         break
-                
                 if header_idx != -1:
-                    # 找到了！正式读取
                     df = pd.read_excel(source, sheet_name=sheet_name, header=header_idx)
-                    # 清洗列名
                     df.columns = [str(c).replace('\n', '').strip() for c in df.columns]
-                    
-                    # 标准化列名，防止 Excel 里写的是"起付线"而不是"起付线/年"
                     rename_map = {}
                     for c in df.columns:
                         if '起付线' in c: rename_map[c] = '起付线'
                         if '报销' in c and '比例' in c: rename_map[c] = '报销比例'
                         if 'X药' in c and '报销' in c: rename_map[c] = 'X药覆盖'
-                    
                     df = df.rename(columns=rename_map)
-                    
-                    # 确保关键列存在
                     required = ['省份', '城市', '保险名称']
                     if all(r in df.columns for r in required):
-                        # 简单的缺失值填充
                         df['省份'] = df['省份'].fillna('其他')
                         df['城市'] = df['城市'].fillna('通用')
                         return df
-            return pd.DataFrame() # 没找到合适的表
-        except Exception:
+            return pd.DataFrame()
+        except:
             return pd.DataFrame()
 
     try:
         df = search_and_load(default_file)
-        # 如果本地没找到，允许用户上传（调试用）
-        if df.empty:
-            return pd.DataFrame()
+        if df.empty: return pd.DataFrame()
         return df
     except:
         return pd.DataFrame()
 
 def parse_deductible(val):
-    """解析起付线，返回浮点数"""
     if pd.isna(val): return 20000.0
     text = str(val)
     match = re.search(r'(\d+(\.\d+)?)', text)
     if match:
         num = float(match.group(1))
         if '万' in text or 'w' in text.lower(): return num * 10000
-        if num < 100: return num * 10000 # 猜测单位是万
+        if num < 100: return num * 10000
         return num
     return 20000.0
 
 def parse_rate(val):
-    """解析报销比例，返回百分数数值 (如 60.0)"""
     if pd.isna(val): return 60.0
     text = str(val)
     match_pct = re.search(r'(\d+(\.\d+)?)%', text)
@@ -141,12 +120,10 @@ with col1:
     st.write("**第1重保障：惠民保**")
     is_huiminbao = st.checkbox("参加当地惠民保", value=True)
     
-    # 默认值
     default_deductible = 20000.0
     default_rate = 60.0
-    selected_prod_id = "default" # 用于控制输入框刷新的 Key
+    selected_prod_id = "default"
     
-    # --- [自动化选择区域] ---
     if is_huiminbao and not df_policy.empty:
         c_sel1, c_sel2 = st.columns(2)
         with c_sel1:
@@ -161,31 +138,23 @@ with col1:
                 st.selectbox("城市", ["-"], disabled=True, label_visibility="collapsed")
         
         if sel_prov != '(请选择)' and sel_city:
-            # 筛选产品
             prod_rows = df_policy[(df_policy['省份']==sel_prov) & (df_policy['城市']==sel_city)]
             prod_names = prod_rows['保险名称'].unique()
             sel_prod = st.selectbox("具体产品", prod_names)
             
-            # 获取数值
             if sel_prod:
                 row = prod_rows[prod_rows['保险名称'] == sel_prod].iloc[0]
                 default_deductible = parse_deductible(row.get('起付线'))
                 default_rate = parse_rate(row.get('报销比例'))
-                
-                # 关键：生成一个基于产品名的 Key
-                # 只要 sel_prod 变了，selected_prod_id 就变，输入框就会重置为新的默认值
                 selected_prod_id = f"{sel_prov}_{sel_city}_{sel_prod}"
                 
-                # 显示政策小字
                 is_cover = row.get('X药覆盖', '需确认')
                 raw_info = f"起付线: {row.get('起付线', '-')} | 比例: {row.get('报销比例', '-')}"
                 st.caption(f"📋 {sel_prod}: X药覆盖 [{is_cover}]")
                 st.caption(f"ℹ️ 参考条款: {raw_info}")
 
-    # --- 输入框 (支持自动更新 + 手动修改) ---
     c1, c2 = st.columns(2)
     with c1:
-        # key 变化时，value 生效；key 不变时，用户修改生效
         hmb_deductible = st.number_input(
             "惠民保起付线", 
             value=default_deductible, 
@@ -210,34 +179,52 @@ with col1:
 with col2:
     st.subheader("结果输出 (模拟测算)")
     
-    # --- 计算逻辑 ---
-    if total_cost > hmb_deductible:
-        reimburse_hmb_val = (total_cost - hmb_deductible) * hmb_rate
+    # ==========================================
+    # --- 核心计算逻辑修改：二段式 (Sequential) ---
+    # ==========================================
+    
+    # 1. 先算双坦 (Step 1)
+    if is_shuangtan:
+        reimburse_st_val = total_cost * shuangtan_rate # 50%
+    else:
+        reimburse_st_val = 0.0
+
+    # 2. 计算剩余基数 (Step 2)
+    # 惠民保只报销“双坦报完剩下的部分”
+    balance_after_st = total_cost - reimburse_st_val
+    
+    # 3. 再算惠民保 (Step 3)
+    # 用余额去减起付线，而不是用总价去减
+    if is_huiminbao:
+        if balance_after_st > hmb_deductible:
+            reimburse_hmb_val = (balance_after_st - hmb_deductible) * hmb_rate
+        else:
+            reimburse_hmb_val = 0.0
     else:
         reimburse_hmb_val = 0.0
         
-    if not is_huiminbao:
-        reimburse_hmb_val = 0.0
-
-    reimburse_st_val = total_cost * shuangtan_rate if is_shuangtan else 0.0
+    # ==========================================
     
     # --- 准备图表数据 ---
+    # 场景1：全自费
     cost_scenario_1 = total_cost
     
-    cost_scenario_2 = total_cost - reimburse_hmb_val
-    if cost_scenario_2 < 0: cost_scenario_2 = 0
+    # 场景2：假设“仅参加惠民保” (用于对比参照)
+    # 此时基数是总价，没有双坦的干扰
+    if total_cost > hmb_deductible:
+        reimb_only_hmb = (total_cost - hmb_deductible) * hmb_rate
+    else:
+        reimb_only_hmb = 0.0
+    cost_scenario_2 = total_cost - reimb_only_hmb
     
-    total_reimb_both = reimburse_hmb_val + reimburse_st_val
+    # 场景3：当前配置 (二段式结算结果)
+    total_reimb_both = reimburse_st_val + reimburse_hmb_val
     cost_scenario_3 = total_cost - total_reimb_both
     if cost_scenario_3 < 0: cost_scenario_3 = 0
     
     # --- 顶部大数字 ---
-    current_reimburse = 0
-    if is_huiminbao: current_reimburse += reimburse_hmb_val
-    if is_shuangtan: current_reimburse += reimburse_st_val
-    
-    if current_reimburse > total_cost: current_reimburse = total_cost
-    current_final_cost = total_cost - current_reimburse
+    current_reimburse = total_reimb_both
+    current_final_cost = cost_scenario_3
     
     daily_avg_cost = current_final_cost / days_usage if days_usage > 0 else 0
     m1, m2, m3 = st.columns(3)
@@ -260,8 +247,8 @@ with col2:
     st.write("### 📊 费用分担对比 (双重保障)")
     
     label_1 = '全额自费'
-    label_2 = '参加地方惠民保'
-    label_3 = '惠民保+双坦同行'
+    label_2 = '仅惠民保(参考)'
+    label_3 = '惠民保+双坦(当前)'
     
     chart_data = pd.DataFrame({
         '情景': [label_1, label_2, label_3],
@@ -271,7 +258,6 @@ with col2:
     
     max_val = chart_data['患者自付费用'].max() * 1.2
     
-    # 手机端优化：禁用 tooltip 和 interactive
     base = alt.Chart(chart_data).encode(
         x=alt.X('患者自付费用', title='患者自付费用（元）', scale=alt.Scale(domain=[0, max_val])),
         y=alt.Y('情景', sort=None, title=None), 
