@@ -9,27 +9,34 @@ st.set_page_config(page_title="X药2026模拟器(Pro版)", layout="wide")
 # --- 1. 数据加载与处理函数 ---
 @st.cache_data
 def load_policy_data():
-    try:
-        # 读取您上传的Excel文件 (假设文件名为 policy_data.xlsx，请根据实际情况修改)
-        # 注意：header=1 是因为原表第一行是分类大标题，第二行才是字段名
-        df = pd.read_excel('副本CSMI BASIC DATA-鼎优乐2026AP1.xlsx', sheet_name='CSMI_BASIC_DATA-2026AP1', header=1)
+    default_file = 'policy_data.xlsx'
+    
+    def read_excel_file(source):
+        # 注意这里：sheet_name=0 表示读取第一个表，不管名字叫什么
+        df = pd.read_excel(source, sheet_name=0, header=1)
         
-        # 简单清洗列名，去除换行符
+        # ... 后面的清洗逻辑保持不变 ...
         df.columns = [c.replace('\n', '') if isinstance(c, str) else c for c in df.columns]
-        
-        # 筛选出有用的列
         cols = ['省份', '城市', '保险名称', '起付线/年', '报销比例', 'X药是否可报销', '备注']
-        # 确保列存在
         valid_cols = [c for c in cols if c in df.columns]
         df = df[valid_cols]
-        
-        # 填充空值
         df['省份'] = df['省份'].fillna('其他')
         df['城市'] = df['城市'].fillna('全省/通用')
         return df
-    except Exception as e:
-        st.error(f"数据加载失败，请检查目录下是否存在Excel文件: {e}")
+
+    try:
+        return read_excel_file(default_file)
+    except FileNotFoundError:
+        st.warning(f"⚠️ 未找到配置文件 `{default_file}`，请手动上传。")
+        uploaded_file = st.file_uploader("上传 Excel", type=['xlsx'])
+        if uploaded_file:
+            return read_excel_file(uploaded_file)
         return pd.DataFrame()
+    except Exception as e:
+        # 这里会把具体的错误打印出来，方便调试
+        st.error(f"表格读取错误: {e}")
+        return pd.DataFrame()
+
 
 def parse_deductible(val):
     """尝试从文本中提取起付线数字"""
