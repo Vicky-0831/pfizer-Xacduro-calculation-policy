@@ -29,28 +29,16 @@ st.markdown("""
         background-color: #f0f2f6 !important;
         opacity: 0.6;
     }
-    
-    /* 弱化小标题 */
-    .small-header {
-        font-size: 14px;
-        color: #999;
-        margin-bottom: 5px;
-    }
-    
-    /* 方案选择按钮样式优化 */
-    .stRadio > div {
-        background-color: #f8f9fa;
-        padding: 10px;
-        border-radius: 5px;
-        border: 1px solid #ddd;
-    }
+    .small-header { font-size: 14px; color: #999; margin-bottom: 5px; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. 强力数据加载函数 ---
+# --- 3. 数据加载函数 (读取 Excel) ---
 @st.cache_data
 def load_policy_data():
-    csv_file = 'CSMI BASIC DATA-鼎优乐2026AP1.xlsx'
+    # ⚠️ 请确保您的 Excel 文件名是 policy.xlsx
+    excel_file = 'policy.xlsx'
+    
     try:
         # 自动搜索包含"省份"的表头
         xl = pd.ExcelFile(excel_file)
@@ -121,7 +109,7 @@ st.markdown("""
 col1, col2 = st.columns([1, 1.5])
 
 with col1:
-    # --- A. 基础信息 ---
+    # A. 基础信息
     st.markdown("<div class='small-header'>基础信息设置</div>", unsafe_allow_html=True)
     with st.container():
         c_p1, c_p2 = st.columns([1, 2])
@@ -141,10 +129,10 @@ with col1:
     
     st.markdown("---")
     
-    # --- B. 双重保障设置 (含方案切换) ---
+    # B. 双重保障设置
     st.subheader("双重保障设置")
     
-    # 方案切换放在最上面
+    # 方案切换
     calc_mode = st.radio(
         "请选择报销结算顺序：",
         ("方案一：先惠民保 -> 再双坦 (默认)", "方案二：先双坦 -> 再惠民保"),
@@ -165,13 +153,11 @@ with col1:
     if is_huiminbao and not df_policy.empty:
         c_sel1, c_sel2 = st.columns(2)
         with c_sel1:
-            # 强制转字符串再排序，防止非字符类型报错
-            all_provs = sorted([str(x) for x in df_policy['省份'].unique() if pd.notna(x)])
-            provinces = ['(请选择)'] + all_provs
+            provinces = ['(请选择)'] + sorted([str(x) for x in df_policy['省份'].unique() if pd.notna(x)])
             sel_prov = st.selectbox("省份", provinces, label_visibility="collapsed")
         with c_sel2:
             if sel_prov != '(请选择)':
-                cities = sorted([str(x) for x in df_policy[df_policy['省份']==sel_prov]['城市'].unique()])
+                cities = sorted([str(x) for x in df_policy[df_policy['省份']==sel_prov]['城市'].unique() if pd.notna(x)])
                 sel_city = st.selectbox("城市", cities, label_visibility="collapsed")
             else:
                 sel_city = None
@@ -186,18 +172,23 @@ with col1:
                 row = prod_rows[prod_rows['保险名称'] == sel_prod].iloc[0]
                 
                 # 智能提取数值
-                # 优先找'起付线/年'，没有则找'起付线'
-                val_deduct = row.get('起付线/年') if '起付线/年' in row else row.get('起付线')
-                val_rate = row.get('报销比例')
+                # 兼容可能的列名变化
+                def get_col(candidates):
+                    for c in candidates:
+                        if c in row: return row[c]
+                    return None
+                    
+                val_deduct = get_col(['起付线/年', '起付线'])
+                val_rate = get_col(['报销比例'])
                 
                 default_deductible = parse_deductible(val_deduct)
                 default_rate = parse_rate(val_rate)
                 selected_prod_id = f"{sel_prov}_{sel_city}_{sel_prod}"
                 
-                # 条款提取 (安全获取)
+                # 条款提取
                 def safe_get(key_part):
                     for col in df_policy.columns:
-                        if key_part in col: return row[col]
+                        if key_part in col: return str(row[col])
                     return '-'
 
                 ref_txt = f"""
@@ -230,31 +221,25 @@ with col1:
 with col2:
     st.subheader("结果输出 (模拟测算)")
     
-    # --- 核心计算 (根据左侧选择动态变化) ---
+    # --- 核心计算 ---
     st_val = 0.0
     hmb_val = 0.0
     
     if is_hmb_first:
         # 方案一：先惠民保 -> 后双坦
-        
-        # 1. 惠民保 (基数=总价)
         if is_huiminbao:
             if total_cost > hmb_deductible:
                 hmb_val = (total_cost - hmb_deductible) * hmb_rate
         
-        # 2. 双坦 (基数=余额)
         balance = total_cost - hmb_val
         if is_shuangtan:
             st_val = balance * shuangtan_rate
             
     else:
-        # 方案二：先双坦 -> 后惠民保 (二段式)
-        
-        # 1. 双坦 (基数=总价)
+        # 方案二：先双坦 -> 后惠民保
         if is_shuangtan:
             st_val = total_cost * shuangtan_rate
             
-        # 2. 惠民保 (基数=余额)
         balance = total_cost - st_val
         if is_huiminbao:
             if balance > hmb_deductible:
@@ -271,7 +256,7 @@ with col2:
     m1, m2, m3 = st.columns(3)
     m1.metric("当前周期预计总费用", f"¥{total_cost:,.0f}")
     
-    # 自定义绿色文字代替默认metric箭头
+    # 绿色文字，无箭头符号干扰
     m2.markdown(f"""
     <div style="font-size: 14px; color: #555;">当前报销合计</div>
     <div style="font-size: 24px; font-weight: bold; color: #000;">¥{total_saved:,.0f}</div>
@@ -326,10 +311,12 @@ with col2:
     st.altair_chart(final_chart, use_container_width=True)
     
     # 节省统计
+    mode_name = calc_mode.split('：')[0] # "方案一"
     st.markdown(f"""
     <div style='padding: 10px; background-color: #f0fdf4; border-radius: 5px; border-left: 5px solid #27ae60;'>
-        📉 <strong>节省统计：</strong> 相比全额自费，当前【{calc_mode.split(' ')[0]}】预计共为您节省 
+        📉 <strong>节省统计：</strong> 相比全额自费，当前【{mode_name}】预计共为您节省 
         <span style='color: #27ae60; font-weight: bold; font-size: 1.2em;'>¥{total_saved:,.0f}</span>
     </div>
     """, unsafe_allow_html=True)
+
 
