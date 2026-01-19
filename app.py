@@ -297,16 +297,20 @@ with col2:
     
     max_val = chart_df['费用'].max() * 1.1
     
+   # mark_bar(tooltip=False) 彻底禁用飘窗
     base = alt.Chart(chart_df).encode(
         y=alt.Y('情景', sort=['全额自费', '参加地方惠民保', '惠民保+双坦同行'], title=None),
-        x=alt.X('费用', title='自付费用', scale=alt.Scale(domain=[0, max_val]))
+        x=alt.X('费用', title='自付费用', scale=alt.Scale(domain=[0, max_v]))
     )
-    bars = base.mark_bar(size=40).encode(
+    
+    bars = base.mark_bar(size=40, tooltip=False).encode(
         color=alt.Color('情景', scale=alt.Scale(range=['#e74c3c', '#3498db', '#27ae60']), legend=None)
     )
+    
     text = base.mark_text(dx=5, align='left', color='black').encode(text='标签')
     
-    final_chart = (bars + text).properties(height=300).configure_view(strokeWidth=0)
+    st.altair_chart((bars + text).properties(height=280).configure_view(strokeWidth=0), use_container_width=True)
+    view(strokeWidth=0)
     st.altair_chart(final_chart, use_container_width=True)
     
     # 节省统计
