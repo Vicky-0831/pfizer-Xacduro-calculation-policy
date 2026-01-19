@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 import re
+import os
 
 # --- 1. 页面配置 ---
 st.set_page_config(page_title="X药2026双重支付商保模拟计算器", layout="wide")
@@ -36,15 +37,17 @@ st.markdown("""
 # --- 3. 数据加载函数 (读取 Excel) ---
 @st.cache_data
 def load_policy_data():
-    # ⚠️ 请确保您的 Excel 文件名是 policy.xlsx
-    excel_file = 'policy.xlsx'
+    # 1. 动态获取 app.py 所在的绝对路径
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # 2. 拼接出 Excel 的完整路径
+    excel_file = os.path.join(current_dir, 'policy.xlsx')
     
     try:
-        # 自动搜索包含"省份"的表头
+        # 打印一下路径，方便调试（你看终端就能看到）
+        print(f"正在读取文件: {excel_file}")
+        
         xl = pd.ExcelFile(excel_file)
-        # 遍历所有 Sheet
         for sheet in xl.sheet_names:
-            # 预读几行找表头
             df_preview = pd.read_excel(excel_file, sheet_name=sheet, header=None, nrows=10)
             header_idx = -1
             for idx, row in df_preview.iterrows():
@@ -54,21 +57,17 @@ def load_policy_data():
                     break
             
             if header_idx != -1:
-                # 找到了，读取数据
                 df = pd.read_excel(excel_file, sheet_name=sheet, header=header_idx)
-                # 清洗列名
                 df.columns = [str(c).replace('\n', '').strip() for c in df.columns]
-                # 填充
                 if '省份' in df.columns: df['省份'] = df['省份'].fillna('其他')
                 if '城市' in df.columns: df['城市'] = df['城市'].fillna('通用')
                 return df
                 
-        # 如果遍历完都没找到
-        st.error("❌ 在 Excel 中未找到包含'省份'和'保险名称'的表头，请检查文件内容。")
+        st.error("❌ Excel 读取成功，但未找到包含'省份'的表头。")
         return pd.DataFrame()
         
     except FileNotFoundError:
-        st.error(f"❌ 找不到文件 `{excel_file}`。请将您的 Excel 重命名为 policy.xlsx 并放在同级目录。")
+        st.error(f"❌ 依然找不到文件: {excel_file}")
         return pd.DataFrame()
     except Exception as e:
         st.error(f"❌ 读取错误: {e}")
