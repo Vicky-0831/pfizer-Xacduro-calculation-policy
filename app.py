@@ -295,7 +295,7 @@ with col2:
         '标签': [f'¥{c1:,.0f}', f'¥{c2:,.0f}', f'¥{c3:,.0f}']
     })
     
-     max_val = chart_df['费用'].max() * 1.1
+    max_val = chart_df['费用'].max() * 1.1
     
     base = alt.Chart(chart_df).encode(
         y=alt.Y('情景', sort=['全额自费', '参加地方惠民保', '惠民保+双坦同行'], title=None),
