@@ -50,23 +50,40 @@ st.markdown("""
 # --- 3. 强力数据加载函数 ---
 @st.cache_data
 def load_policy_data():
-    csv_file = 'CSMI BASIC DATA-鼎优乐2026AP1.xlsx_Sheet1_CSMI_BASIC_DATA-2026AP1.csv'
+    csv_file = 'CSMI BASIC DATA-鼎优乐2026AP1.xlsx'
     try:
-        # 尝试多种编码读取，增加鲁棒性
-        try:
-            df = pd.read_csv(csv_file, header=1, encoding='utf-8')
-        except:
-            df = pd.read_csv(csv_file, header=1, encoding='gbk')
+        # 自动搜索包含"省份"的表头
+        xl = pd.ExcelFile(excel_file)
+        # 遍历所有 Sheet
+        for sheet in xl.sheet_names:
+            # 预读几行找表头
+            df_preview = pd.read_excel(excel_file, sheet_name=sheet, header=None, nrows=10)
+            header_idx = -1
+            for idx, row in df_preview.iterrows():
+                row_str = row.astype(str).values
+                if '省份' in row_str and '保险名称' in row_str:
+                    header_idx = idx
+                    break
             
-        # 清洗列名：去空格、换行
-        df.columns = [str(c).replace('\n', '').strip() for c in df.columns]
+            if header_idx != -1:
+                # 找到了，读取数据
+                df = pd.read_excel(excel_file, sheet_name=sheet, header=header_idx)
+                # 清洗列名
+                df.columns = [str(c).replace('\n', '').strip() for c in df.columns]
+                # 填充
+                if '省份' in df.columns: df['省份'] = df['省份'].fillna('其他')
+                if '城市' in df.columns: df['城市'] = df['城市'].fillna('通用')
+                return df
+                
+        # 如果遍历完都没找到
+        st.error("❌ 在 Excel 中未找到包含'省份'和'保险名称'的表头，请检查文件内容。")
+        return pd.DataFrame()
         
-        # 填充缺失
-        if '省份' in df.columns: df['省份'] = df['省份'].fillna('其他')
-        if '城市' in df.columns: df['城市'] = df['城市'].fillna('通用')
-        
-        return df
-    except Exception:
+    except FileNotFoundError:
+        st.error(f"❌ 找不到文件 `{excel_file}`。请将您的 Excel 重命名为 policy.xlsx 并放在同级目录。")
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"❌ 读取错误: {e}")
         return pd.DataFrame()
 
 def parse_deductible(val):
