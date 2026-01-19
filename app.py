@@ -142,7 +142,7 @@ with col1:
     st.markdown("---")
     
     # 1. 惠民保
-    st.write("**第1重保障：惠民保** (信息更新时间：**)")
+    st.write("**第1重保障：惠民保** (信息更新时间：2026AP1)")
     is_huiminbao = st.checkbox("参加当地惠民保", value=True)
     
     default_deductible = 20000.0
